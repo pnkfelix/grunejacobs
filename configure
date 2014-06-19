@@ -1,0 +1,41 @@
+#!/bin/sh
+
+source $(dirname $0)/sh/helper_fns.sh
+
+CFG_SRC_DIR="$(cd $(dirname $0) && pwd)/"
+CFG_BUILD_DIR="$(pwd)/"
+CFG_SELF="$0"
+CFG_CONFIGURE_ARGS="$@"
+
+OPTIONS=""
+HELP=0
+if [ "$1" = "--help" ]
+then
+    HELP=1
+    shift
+    echo
+    echo "Usage: $CFG_SELF [options]"
+    echo
+    echo "Options:"
+    echo
+else
+    msg "recreating config.tmp"
+    echo '' >config.tmp
+
+    step_msg "processing $CFG_SELF args"
+fi
+
+BOOL_OPTIONS=""
+VAL_OPTIONS=""
+
+step_msg "writing configuration"
+
+putvar CFG_SRC_DIR
+putvar CFG_BUILD_DIR
+putvar CFG_CONFIGURE_ARGS
+
+msg
+copy_if_changed ${CFG_SRC_DIR}Makefile.in ./Makefile
+move_if_changed config.tmp config.mk
+rm -f config.tmp
+touch config.stamp

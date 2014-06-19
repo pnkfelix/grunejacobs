@@ -1,0 +1,25 @@
+# Copyright 2014 Felix S. Klock II. See the COPYRIGHT
+# file at the top-level directory of this distribution and at
+# http://rust-lang.org/COPYRIGHT.
+#
+# Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+# http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+# <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+# option. This file may not be copied, modified, or distributed
+# except according to those terms.
+
+.PHONY: default
+
+# load the variables exported by the configure script
+include config.mk
+
+RUSTC ?= rustc
+
+LIB_SO:=$(shell $(RUSTC) --crate-file-name $(CFG_SRC_DIR)/lib.rs)
+
+$(info LIB_SO $(LIB_SO))
+
+$(LIB_SO): $(CFG_SRC_DIR)/lib.rs
+	$(RUSTC) $<
+
+default: $(LIB_SO)
