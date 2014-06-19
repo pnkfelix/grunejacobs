@@ -16,8 +16,10 @@ include config.mk
 RUSTC ?= rustc
 
 LIB_SO:=$(shell $(RUSTC) --crate-file-name $(CFG_SRC_DIR)/lib.rs)
+LIB_DEPS_FILE=$(LIB_SO).deps
+$(shell $(RUSTC) --dep-info=$(LIB_DEPS_FILE) $(CFG_SRC_DIR)/lib.rs)
 
-$(info LIB_SO $(LIB_SO))
+include $(LIB_DEPS_FILE)
 
 $(LIB_SO): $(CFG_SRC_DIR)/lib.rs
 	$(RUSTC) $<
