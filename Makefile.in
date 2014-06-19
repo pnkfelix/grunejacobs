@@ -9,7 +9,8 @@
 # except according to those terms.
 
 .PHONY: default
-default: test demo
+default: lib-test test demo
+	./lib-test --test
 	./test --test
 	./demo
 
@@ -29,6 +30,9 @@ Makefile: $(CFG_SRC_DIR)/configure $(CFG_SRC_DIR)/Makefile.in
 
 $(LIB_SO): $(CFG_SRC_DIR)/lib.rs Makefile
 	$(RUSTC) $<
+
+lib-test: $(CFG_SRC_DIR)/lib.rs $(LIB_SO)
+	$(RUSTC) -L . --test -o $@ $<
 
 test: $(CFG_SRC_DIR)/test.rs $(LIB_SO)
 	$(RUSTC) -L . --test -o $@ $<

@@ -4,3 +4,4 @@
 #![crate_id="grunejacobs#v0.0.1"]
 
 pub mod chomsky;
+mod maybe_owned_vec;

@@ -3,7 +3,7 @@ extern crate grunejacobs;
 use grunejacobs::chomsky;
 
 pub fn demo() {
-    let tdh = chomsky::tdh();
+    let tdh = chomsky::tdh_0();
     println!("tdh: {}", tdh);
 }
 

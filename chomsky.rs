@@ -5,18 +5,31 @@ use std::fmt;
 use std::fmt::Show;
 use std::str;
 
-pub trait Sym {
+use maybe_owned_vec;
+use maybe_owned_vec::MaybeOwnedVector;
+
+pub trait SymData {
     fn to_str<'a>(&'a self) -> str::MaybeOwned<'a>;
 }
 
-pub enum Symbol<NonTerm/*:Symbol*/,Term/*:Symbol*/> { NT(NonTerm), T(Term), }
+pub trait SymSeq<NT,T> {
+    fn symbols<'a>(&'a self) -> SententialForm_Symbols<'a,NT,T>;
+}
+
+#[deriving(Clone,PartialEq)]
+pub enum Symbol<NonTerm/*:Sym*/,Term/*:Sym*/> { NT(NonTerm), T(Term), }
+
+pub trait Sym<NT,T> {
+    fn to_symbol(&self) -> Symbol<NT,T>;
+}
+
 
 // FIXME: make priv when/if we have `impl Trait`
 pub struct SententialForm_Symbols<'a, NT/*:Sym*/, T/*:Sym*/> {
-    syms: &'a [Symbol<NT,T>],
+    syms: MaybeOwnedVector<'a, Symbol<NT,T>>,
     idx: uint,
 }
-pub trait SententialForm<NonTerm:Sym, Term:Sym> {
+pub trait SententialForm<NonTerm:SymData, Term:SymData> {
     fn symbols(&self) -> SententialForm_Symbols<NonTerm, Term>;
 }
 
@@ -25,11 +38,11 @@ pub struct Sentence_Contents<'a, T/*:Sym*/> {
     terms: &'a [T],
     idx: uint,
 }
-pub trait Sentence<Term:Sym> {
+pub trait Sentence<Term:SymData> {
     fn contents(&self) -> Sentence_Contents<Term>;
 }
 
-pub trait Language<NonTerm:Sym, Term:Sym> {
+pub trait Language<NonTerm:SymData, Term:SymData> {
     
 }
 
@@ -126,15 +139,29 @@ impl To<Vec<Vec<&'static str>>> for Vec<Vec<&'static str>> {
     fn to(self) -> Vec<Vec<&'static str>> { self }
 }
 
+trait Shorthand { fn to_symbol(self) -> Symbol<Self,Self>; }
+
+impl Shorthand for &'static str {
+    fn to_symbol(self) -> Symbol<&'static str, &'static str> {
+        if self.chars().next().unwrap().is_uppercase() {
+            NT(self)
+        } else if self.chars().next().unwrap() == '<' && self.chars().rev().next().unwrap() == '>' {
+            NT(self)
+        } else {
+            T(self)
+        }
+    }
+}
+
 macro_rules! rule {
     // ( $left:expr -> ) => { rule($left, vec![]) };
     ( $left:ident -> $($first:ident),* $(| $($rest:ident).* )*) => {
-        rule(stringify!($left), vec![vec![$(stringify!($first)),*],
+        rule(stringify!($left), vec![vec![$({let s = stringify!($first); s}),*],
                                      $(vec![$(stringify!($rest)),*]),*])
     };
 }
 
-pub fn tdh() -> Grammar<Vec<&'static str>, Vec<&'static str>> {
+pub fn tdh_0() -> Grammar<Vec<&'static str>, Vec<&'static str>> {
     Grammar {
         start: vec!["Sentence"],
         rules: vec![rule!(Name -> tom | dick | harry),
@@ -144,4 +171,143 @@ pub fn tdh() -> Grammar<Vec<&'static str>, Vec<&'static str>> {
                     rule(vec!["List"], vec![vec!["Name"], vec!["List", ",", "End"]]),
                     rule(vec![",", "Name", "End"], vec![vec!["and", "Name"]])],
     }
+}
+
+pub fn tdh_1_monotonic() -> Grammar<Vec<&'static str>, Vec<&'static str>> {
+    Grammar {
+        start: vec!["Sentence"],
+        rules: vec![rule!(Name -> tom | dick | harry),
+                    rule!(Sentence -> Name | List),
+                    // rule!(List -> Name | Name . Comma . End),
+                    // rule("Comma", vec![vec![","]]),
+                    rule("List", vec![vec!["EndName"], vec!["Name", ",", "List"]]),
+                    rule(vec![",", "EndName"], vec![vec!["and", "Name"]])],
+    }
+}
+
+impl<NT,T,L:SymSeq<NT,T>,R:SymSeq<NT,T>> Grammar<L,R> {
+    /// Checks the somewhat trivial condition that every rule has a
+    /// non-empty LHS, as that is the only thing that is not
+    /// structurally enforced here.
+    fn is_type_0(&self) -> bool {
+        for rule in self.rules.iter() {
+            if rule.lhs.symbols().syms.len() == 0 {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    fn is_type_1_monotonic(&self) -> bool {
+        for rule in self.rules.iter() {
+            let lhs_len = rule.lhs.symbols().syms.len();
+            for variant in rule.variants.iter() {
+                if lhs_len > variant.symbols().syms.len() {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+}
+
+impl<NT:Eq,T:Eq,L:SymSeq<NT,T>,R:SymSeq<NT,T>> Grammar<L,R> {
+    fn is_type_1_context_sensitive(&self) -> bool {
+        for rule in self.rules.iter() {
+            for variant in rule.variants.iter() {
+                let lhs = rule.lhs.symbols().syms;
+                let rhs = variant.symbols().syms;
+                if !replaces_exactly_one_nonterm(lhs.as_slice(), rhs.as_slice()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+}
+
+impl<T:Shorthand+Clone> SymSeq<T,T> for Vec<T> {
+    fn symbols<'a>(&'a self) -> SententialForm_Symbols<'a,T,T> {
+        let syms_vec = self.iter().map(|s|s.clone().to_symbol()).collect();
+        let syms = maybe_owned_vec::Growable(syms_vec);
+        SententialForm_Symbols { idx: 0, syms: syms, }
+    }
+}
+
+fn replaces_exactly_one_nonterm<NonTerm:Eq,Term:Eq>(
+    lhs: &[Symbol<NonTerm,Term>],
+    rhs: &[Symbol<NonTerm,Term>]) -> bool {
+
+    // Strategy: walk forward until you see a non-terminal get
+    // replaced.  Then switch direction and walk backward, to ensure
+    // that all of the context on the remainder of the LHS is still
+    // preserved on the RHS.
+
+    let mut lhs = lhs.iter();
+    let mut rhs = rhs.iter();
+    let mut saw_nonterm = false;
+    loop {
+        let l = lhs.next();
+        let r = rhs.next();
+        match (l,r,saw_nonterm) {
+            (None, None, _)
+                => return true,
+            (Some(&T(ref l)), Some(&T(ref r)), false)
+                => if l == r { continue; } else { return false; },
+            (Some(&T(ref l)), Some(&T(ref r)), true)
+                => if l == r { continue; } else { break; },
+            (Some(&T(_)), Some(&NT(_)), false)
+                => return false,
+            (Some(&T(_)), Some(&NT(_)), true)
+                => break,
+            (Some(&NT(ref l)), Some(&NT(ref r)), _) if l == r
+                => { saw_nonterm = true; continue; }
+            (Some(&NT(_)), Some(_), _)
+                => break,
+            (None, Some(_), false)
+                => return false,
+            (None, Some(_), true)
+                => break,
+            (Some(_), None, _)
+                => return false,
+        }
+    }
+    let mut lhs = lhs.rev();
+    let mut rhs = rhs.rev();
+    loop {
+        let l = lhs.next();
+        let r = rhs.next();
+        match (l,r) {
+            (None, _) // LHS side ran out; we can stop now.
+                => return true,
+            (Some(l), Some(r))
+                => if l == r { continue; } else { return false; },
+            (Some(_), None) // RHS side ran out before LHS; non-monotonic.
+                => return false,
+        }
+    }
+}
+
+#[test]
+fn check_tdh_is_type_0() {
+    let tdh = tdh_0();
+    assert!(tdh.is_type_0());
+}
+
+#[test]
+fn check_tdh_is_not_type_1_monotonic() {
+    let tdh = tdh_0();
+    assert!(!tdh.is_type_1_monotonic());
+}
+
+#[test]
+fn check_tdh_is_not_type_1_context_sensitive() {
+    let tdh = tdh_0();
+    assert!(!tdh.is_type_1_context_sensitive());
+}
+
+#[test]
+fn check_tdh_monotonic() {
+    let tdh = tdh_1_monotonic();
+    assert!(tdh.is_type_1_monotonic());
 }
