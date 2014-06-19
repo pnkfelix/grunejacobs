@@ -87,8 +87,10 @@ impl<L:Show,R:Show> fmt::Show for Rule<L,R> {
     }
 }
 
-fn rule<LHS,RHS>(lhs: LHS, variants: Vec<RHS>) -> Rule<LHS,RHS> {
-    Rule { lhs: lhs, variants: variants }
+trait To<T> { fn to(self) -> T; }
+
+fn rule<LHS,RHS,L:To<LHS>,R:To<Vec<RHS>>>(lhs: L, variants: R) -> Rule<LHS,RHS> {
+    Rule { lhs: lhs.to(), variants: variants.to() }
 }
 
 pub struct Grammar<LHS,RHS> {
@@ -112,12 +114,34 @@ struct LHS0<NT/*:Sym*/, T/*:Sym*/> {
     elems: Vec<Symbol<NT, T>>,
 }
 
+impl To<Vec<&'static str>> for &'static str {
+    fn to(self) -> Vec<&'static str> { vec![self] }
+}
+
+impl To<Vec<&'static str>> for Vec<&'static str> {
+    fn to(self) -> Vec<&'static str> { self }
+}
+
+impl To<Vec<Vec<&'static str>>> for Vec<Vec<&'static str>> {
+    fn to(self) -> Vec<Vec<&'static str>> { self }
+}
+
+macro_rules! rule {
+    // ( $left:expr -> ) => { rule($left, vec![]) };
+    ( $left:ident -> $($first:ident),* $(| $($rest:ident).* )*) => {
+        rule(stringify!($left), vec![vec![$(stringify!($first)),*],
+                                     $(vec![$(stringify!($rest)),*]),*])
+    };
+}
+
 pub fn tdh() -> Grammar<Vec<&'static str>, Vec<&'static str>> {
     Grammar {
         start: vec!["Sentence"],
-        rules: vec![rule(vec![            "Name"], vec![vec!["tom"],  vec!["dick"], vec!["harry"]]),
-                    rule(vec![        "Sentence"], vec![vec!["Name"], vec!["List", "End"]]),
-                    rule(vec![            "List"], vec![vec!["Name"], vec!["Name", ",", "End"]]),
+        rules: vec![rule!(Name -> tom | dick | harry),
+                    rule!(Sentence -> Name | List . End),
+                    // rule!(List -> Name | Name . Comma . End),
+                    // rule("Comma", vec![vec![","]]),
+                    rule(vec!["List"], vec![vec!["Name"], vec!["List", ",", "End"]]),
                     rule(vec![",", "Name", "End"], vec![vec!["and", "Name"]])],
     }
 }
