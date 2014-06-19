@@ -9,6 +9,9 @@
 # except according to those terms.
 
 .PHONY: default
+default: test demo
+	./test --test
+	./demo
 
 # load the variables exported by the configure script
 include config.mk
@@ -21,7 +24,14 @@ $(shell $(RUSTC) --dep-info=$(LIB_DEPS_FILE) $(CFG_SRC_DIR)/lib.rs)
 
 include $(LIB_DEPS_FILE)
 
-$(LIB_SO): $(CFG_SRC_DIR)/lib.rs
+Makefile: $(CFG_SRC_DIR)/configure $(CFG_SRC_DIR)/Makefile.in
+	$<
+
+$(LIB_SO): $(CFG_SRC_DIR)/lib.rs Makefile
 	$(RUSTC) $<
 
-default: $(LIB_SO)
+test: $(CFG_SRC_DIR)/test.rs $(LIB_SO)
+	$(RUSTC) -L . --test -o $@ $<
+
+demo: $(CFG_SRC_DIR)/test.rs $(LIB_SO)
+	$(RUSTC) -L .        -o $@ $<
