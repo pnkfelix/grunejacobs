@@ -155,8 +155,8 @@ impl Shorthand for &'static str {
 
 macro_rules! rule {
     // ( $left:expr -> ) => { rule($left, vec![]) };
-    ( $left:ident -> $($first:ident),* $(| $($rest:ident).* )*) => {
-        rule(stringify!($left), vec![vec![$({let s = stringify!($first); s}),*],
+    ( $($left:ident).* -> $($first:ident).* $(| $($rest:ident).* )*) => {
+        rule(vec![$(stringify!($left)),*], vec![vec![$({let s = stringify!($first); s}),*],
                                      $(vec![$(stringify!($rest)),*]),*])
     };
 }
@@ -166,9 +166,9 @@ pub fn tdh_0() -> Grammar<Vec<&'static str>, Vec<&'static str>> {
         start: vec!["Sentence"],
         rules: vec![rule!(Name -> tom | dick | harry),
                     rule!(Sentence -> Name | List . End),
-                    // rule!(List -> Name | Name . Comma . End),
-                    // rule("Comma", vec![vec![","]]),
+                    //    List -> Name | List , End
                     rule(vec!["List"], vec![vec!["Name"], vec!["List", ",", "End"]]),
+                    //    , Name End -> and Name
                     rule(vec![",", "Name", "End"], vec![vec!["and", "Name"]])],
     }
 }
@@ -178,10 +178,23 @@ pub fn tdh_1_monotonic() -> Grammar<Vec<&'static str>, Vec<&'static str>> {
         start: vec!["Sentence"],
         rules: vec![rule!(Name -> tom | dick | harry),
                     rule!(Sentence -> Name | List),
-                    // rule!(List -> Name | Name . Comma . End),
-                    // rule("Comma", vec![vec![","]]),
+                    //    List -> EndName | Name , List
                     rule("List", vec![vec!["EndName"], vec!["Name", ",", "List"]]),
+                    //    , EndName -> and Name
                     rule(vec![",", "EndName"], vec![vec!["and", "Name"]])],
+    }
+}
+
+pub fn tdh_1_context_sensitive() -> Grammar<Vec<&'static str>, Vec<&'static str>> {
+    Grammar {
+        start: vec!["Sentence"],
+        rules: vec![rule!(           Name -> tom | dick | harry),
+                    rule!(       Sentence -> Name | List),
+                    rule!(           List -> EndName
+                                           | Name . Comma . List),
+                    rule!(Comma . EndName -> and . EndName),
+                    rule!(  and . EndName -> and . Name),
+                    rule("Comma", vec![vec![","]])],
     }
 }
 
@@ -289,25 +302,25 @@ fn replaces_exactly_one_nonterm<NonTerm:Eq,Term:Eq>(
 }
 
 #[test]
-fn check_tdh_is_type_0() {
+fn check_tdh_0_properties() {
     let tdh = tdh_0();
     assert!(tdh.is_type_0());
-}
-
-#[test]
-fn check_tdh_is_not_type_1_monotonic() {
-    let tdh = tdh_0();
     assert!(!tdh.is_type_1_monotonic());
-}
-
-#[test]
-fn check_tdh_is_not_type_1_context_sensitive() {
-    let tdh = tdh_0();
     assert!(!tdh.is_type_1_context_sensitive());
 }
 
 #[test]
-fn check_tdh_monotonic() {
+fn check_tdh_1_monotonic_properties() {
     let tdh = tdh_1_monotonic();
+    assert!(tdh.is_type_0());
     assert!(tdh.is_type_1_monotonic());
+    assert!(!tdh.is_type_1_context_sensitive());
+}
+
+#[test]
+fn check_tdh_1_context_sensitive_properties() {
+    let tdh = tdh_1_context_sensitive();
+    assert!(tdh.is_type_0());
+    assert!(tdh.is_type_1_monotonic());
+    assert!(tdh.is_type_1_context_sensitive());
 }
